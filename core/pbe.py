@@ -1,84 +1,62 @@
 """
 Advanced Password-Based Encryption (PBE) Engine.
-Derives a 256-bit AES-GCM key from a user password using PBKDF2-HMAC-SHA256.
-Enforces authenticated encryption, structured KDF metadata, and strict AAD binding.
+Integrates PBKDF2, Scrypt, and Argon2id via the new KDF Engine.
+Uses AES-256-GCM for Authenticated Encryption.
+Fully backwards-compatible with M13 (v1.0) JSON packages.
 """
-
 import json
 from typing import Dict, Any
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
 
 from .exceptions import CryptographicOperationError, InvalidInputError, AuthenticationError
 from .randomness import generate_random_bytes
 from .encoding import text_to_bytes, bytes_to_text, bytes_to_b64, b64_to_bytes
+from .kdf_engine import derive_key, generate_kdf_salt, KDF_REGISTRY
 
-PBE_KEY_SIZE = 32         # 256 bits for AES-GCM
-PBE_NONCE_SIZE = 12       # 96 bits for AES-GCM
-PBE_SALT_SIZE = 16        # 128 bits minimum recommended for PBKDF2
-PBE_DEFAULT_ITERATIONS = 600_000  # OWASP recommended baseline for PBKDF2-HMAC-SHA256 (2023)
-PBE_MAX_ITERATIONS = 5_000_000    # Upper bound to prevent DoS via excessive derivation requests
+PBE_NONCE_SIZE = 12 # 96 bits for AES-GCM
 
-def generate_pbe_salt() -> bytes:
-    """Generates a cryptographically secure random 16-byte salt."""
-    return generate_random_bytes(PBE_SALT_SIZE)
-
-def validate_kdf_parameters(salt: bytes, iterations: int) -> None:
-    """Validates KDF parameters against safe bounds to prevent DoS or weak derivation."""
-    if len(salt) < PBE_SALT_SIZE:
-        raise InvalidInputError(f"Salt must be at least {PBE_SALT_SIZE} bytes.")
-    if not isinstance(iterations, int) or iterations < 10_000:
-        raise InvalidInputError("Iteration count is dangerously low. Must be at least 10,000.")
-    if iterations > PBE_MAX_ITERATIONS:
-        raise InvalidInputError(f"Iteration count exceeds safety limits ({PBE_MAX_ITERATIONS}) to prevent resource exhaustion.")
-
-def derive_encryption_key(password: str, salt: bytes, iterations: int) -> bytes:
+def _build_pbe_aad(version: str, kdf_algo: str, kdf_params: dict, salt_b64: str, cipher_algo: str, nonce_b64: str, user_aad: str) -> bytes:
     """
-    Derives a 256-bit AES encryption key using PBKDF2-HMAC-SHA256.
+    Constructs deterministic Additional Authenticated Data (AAD).
+    Handles M13 legacy fallback (v1.0) strictly, while supporting generic param dictionaries in v1.1.
     """
-    if not password:
-        raise InvalidInputError("Password cannot be empty.")
+    if version == "1.0":
+        # M13 Hardcoded compatibility string
+        iters = kdf_params.get("iterations", 600000)
+        aad_string = f"{version}|PBKDF2|{iters}|{salt_b64}|{cipher_algo}|{nonce_b64}|{user_aad}"
+    elif version == "1.1":
+        # M14 flexible param dictionary parsing (sorted for deterministic ordering)
+        sorted_params = ",".join(f"{k}={v}" for k, v in sorted(kdf_params.items()))
+        aad_string = f"{version}|{kdf_algo}|{sorted_params}|{salt_b64}|{cipher_algo}|{nonce_b64}|{user_aad}"
+    else:
+        raise InvalidInputError(f"Unsupported package version for AAD: {version}")
         
-    validate_kdf_parameters(salt, iterations)
-    
-    try:
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=PBE_KEY_SIZE,
-            salt=salt,
-            iterations=iterations,
-        )
-        return kdf.derive(text_to_bytes(password))
-    except Exception as e:
-        raise CryptographicOperationError(f"PBKDF2 Key Derivation failed: {str(e)}")
-
-def _build_pbe_aad(version: str, kdf_algo: str, iterations: int, salt_b64: str, cipher_algo: str, nonce_b64: str, user_aad: str) -> bytes:
-    """
-    Constructs deterministic Additional Authenticated Data (AAD) mathematically binding 
-    the plaintext to its exact KDF parameters, preventing metadata tampering.
-    """
-    aad_string = f"{version}|{kdf_algo}|{iterations}|{salt_b64}|{cipher_algo}|{nonce_b64}|{user_aad}"
     return text_to_bytes(aad_string)
 
-def encrypt_with_password(password: str, plaintext: str, iterations: int = PBE_DEFAULT_ITERATIONS, user_aad: str = "") -> Dict[str, Any]:
+def encrypt_with_password(password: str, plaintext: str, kdf_algo: str = "Argon2id", kdf_params: dict = None, user_aad: str = "") -> Dict[str, Any]:
     """
-    Executes the complete PBE workflow: Derives key, encrypts via AES-GCM, and builds the versioned JSON package.
+    Executes the complete PBE workflow using any supported KDF, securing plaintext via AES-GCM.
+    Outputs format_version 1.1 JSON payload.
     """
+    if not kdf_params:
+        if kdf_algo not in KDF_REGISTRY:
+            raise InvalidInputError("Unsupported KDF algorithm.")
+        kdf_params = KDF_REGISTRY[kdf_algo]["defaults"]
+        
     try:
-        salt = generate_pbe_salt()
+        salt = generate_kdf_salt()
         nonce = generate_random_bytes(PBE_NONCE_SIZE)
         
         salt_b64 = bytes_to_b64(salt)
         nonce_b64 = bytes_to_b64(nonce)
         
-        # 1. Derive Key
-        dek = derive_encryption_key(password, salt, iterations)
+        # 1. Derive Key using the Unified Engine
+        dek = derive_key(password, salt, kdf_algo, kdf_params)
         
-        # 2. Build AAD combining structured package metadata and user AAD
-        version = "1.0"
-        aad_bytes = _build_pbe_aad(version, "PBKDF2", iterations, salt_b64, "AES-256-GCM", nonce_b64, user_aad)
+        # 2. Build AAD
+        version = "1.1"
+        aad_bytes = _build_pbe_aad(version, kdf_algo, kdf_params, salt_b64, "AES-256-GCM", nonce_b64, user_aad)
         
         # 3. Encrypt & Authenticate via AES-256-GCM
         aesgcm = AESGCM(dek)
@@ -90,9 +68,8 @@ def encrypt_with_password(password: str, plaintext: str, iterations: int = PBE_D
             "format_version": version,
             "encryption_type": "Password-Based Encryption",
             "kdf": {
-                "algorithm": "PBKDF2",
-                "prf": "HMAC-SHA256",
-                "iterations": iterations,
+                "algorithm": kdf_algo,
+                "parameters": kdf_params,
                 "salt": salt_b64
             },
             "cipher": {
@@ -109,14 +86,13 @@ def encrypt_with_password(password: str, plaintext: str, iterations: int = PBE_D
 
 def decrypt_with_password(password: str, payload_json: str) -> str:
     """
-    Authenticates and decrypts a PBE JSON package using the provided password.
-    Rejects modified ciphertext, altered metadata, or incorrect passwords safely.
+    Authenticates and decrypts a PBE JSON package (Supports v1.0 and v1.1).
     """
     try:
         payload = json.loads(payload_json)
         
         version = payload.get("format_version")
-        if version != "1.0":
+        if version not in ["1.0", "1.1"]:
             raise InvalidInputError(f"Unsupported format version: {version}")
             
         enc_type = payload.get("encryption_type")
@@ -126,18 +102,24 @@ def decrypt_with_password(password: str, payload_json: str) -> str:
         kdf = payload.get("kdf", {})
         cipher = payload.get("cipher", {})
         
-        if kdf.get("algorithm") != "PBKDF2" or kdf.get("prf") != "HMAC-SHA256":
-            raise InvalidInputError("Unsupported KDF algorithm/PRF.")
         if cipher.get("algorithm") != "AES-256-GCM":
             raise InvalidInputError("Unsupported Cipher algorithm.")
             
-        iterations = kdf.get("iterations")
+        # Parse KDF metadata depending on version
+        if version == "1.0":
+            kdf_algo = "PBKDF2-HMAC-SHA256"
+            kdf_params = {"iterations": kdf.get("iterations")}
+            if not kdf_params["iterations"]: raise InvalidInputError("Missing iterations in v1.0 package.")
+        else:
+            kdf_algo = kdf.get("algorithm")
+            kdf_params = kdf.get("parameters", {})
+            
         salt_b64 = kdf.get("salt")
         nonce_b64 = cipher.get("nonce")
         user_aad_b64 = payload.get("aad", "")
         ct_b64 = payload.get("ciphertext")
         
-        if not all([iterations, salt_b64, nonce_b64, ct_b64]):
+        if not all([salt_b64, nonce_b64, ct_b64]):
             raise InvalidInputError("Malformed PBE Package: Missing required fields.")
             
         salt = b64_to_bytes(salt_b64)
@@ -149,10 +131,10 @@ def decrypt_with_password(password: str, payload_json: str) -> str:
             raise InvalidInputError("Invalid AES-GCM nonce length.")
             
         # 1. Derive Key
-        dek = derive_encryption_key(password, salt, iterations)
+        dek = derive_key(password, salt, kdf_algo, kdf_params)
         
         # 2. Reconstruct AAD
-        aad_bytes = _build_pbe_aad(version, "PBKDF2", iterations, salt_b64, "AES-256-GCM", nonce_b64, user_aad)
+        aad_bytes = _build_pbe_aad(version, kdf_algo, kdf_params, salt_b64, "AES-256-GCM", nonce_b64, user_aad)
         
         # 3. Authenticate and Decrypt
         aesgcm = AESGCM(dek)
@@ -168,3 +150,19 @@ def decrypt_with_password(password: str, payload_json: str) -> str:
         raise
     except Exception as e:
         raise CryptographicOperationError(f"Password Decryption engine failed: {str(e)}")
+
+def migrate_pbe_package(password: str, payload_json: str, new_kdf_algo: str, new_kdf_params: dict = None) -> Dict[str, Any]:
+    """
+    Migration System: Safely decrypts an old package (e.g. v1.0 PBKDF2) and re-encrypts it to a new KDF (e.g. v1.1 Argon2id).
+    Fails safely if password or original package is invalid.
+    """
+    # 1. Authenticate and Decrypt strictly
+    plaintext = decrypt_with_password(password, payload_json)
+    
+    # Extract existing user AAD if present to preserve it
+    payload = json.loads(payload_json)
+    user_aad_b64 = payload.get("aad", "")
+    user_aad = bytes_to_text(b64_to_bytes(user_aad_b64)) if user_aad_b64 else ""
+    
+    # 2. Re-encrypt with new KDF
+    return encrypt_with_password(password, plaintext, new_kdf_algo, new_kdf_params, user_aad)
