@@ -30,6 +30,8 @@ ALGORITHM_REGISTRY: Dict[str, AlgorithmMetadata] = {
     "RSA-OAEP-SHA384": AlgorithmMetadata("RSA-OAEP-SHA384", "Asymmetric Enc", "RSA OAEP with SHA-384", "Implemented", "M06"),
     "RSA-OAEP-SHA512": AlgorithmMetadata("RSA-OAEP-SHA512", "Asymmetric Enc", "RSA OAEP with SHA-512", "Implemented", "M06"),
     
+    "Hybrid-RSA-AES": AlgorithmMetadata("Hybrid-RSA-AES", "Hybrid AEAD", "RSA-OAEP KEM + AES-GCM DEM", "Implemented", "M10"),
+    
     "X25519": AlgorithmMetadata("X25519", "Key Exchange", "Elliptic-curve Diffie-Hellman", "Planned", "M12"),
     "PBKDF2": AlgorithmMetadata("PBKDF2", "KDF", "Password-Based Key Derivation Function 2", "Planned", "M14"),
     "Scrypt": AlgorithmMetadata("Scrypt", "KDF", "Scrypt Key Derivation Function", "Planned", "M14"),
