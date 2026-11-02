@@ -1,0 +1,44 @@
+"""
+Encoding and Decoding Engine.
+Centralizes standard text-to-byte and encoding translations safely.
+"""
+
+import base64
+import binascii
+from .exceptions import EncodingError
+
+def text_to_bytes(text: str) -> bytes:
+    """Safely converts UTF-8 text to bytes."""
+    try:
+        return text.encode('utf-8')
+    except UnicodeEncodeError as e:
+        raise EncodingError(f"Failed to encode string to UTF-8: {str(e)}")
+
+def bytes_to_text(data: bytes) -> str:
+    """Safely converts bytes to UTF-8 text."""
+    try:
+        return data.decode('utf-8')
+    except UnicodeDecodeError as e:
+        raise EncodingError(f"Failed to decode bytes to UTF-8: {str(e)}")
+
+def bytes_to_b64(data: bytes) -> str:
+    """Encodes bytes to a Base64 string."""
+    return base64.b64encode(data).decode('utf-8')
+
+def b64_to_bytes(b64_str: str) -> bytes:
+    """Decodes a Base64 string to bytes."""
+    try:
+        return base64.b64decode(b64_str, validate=True)
+    except binascii.Error as e:
+        raise EncodingError(f"Invalid Base64 input: {str(e)}")
+
+def bytes_to_hex(data: bytes) -> str:
+    """Encodes bytes to a hexadecimal string."""
+    return data.hex()
+
+def hex_to_bytes(hex_str: str) -> bytes:
+    """Decodes a hexadecimal string to bytes."""
+    try:
+        return bytes.fromhex(hex_str)
+    except ValueError as e:
+        raise EncodingError(f"Invalid Hexadecimal input: {str(e)}")
