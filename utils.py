@@ -24,7 +24,6 @@ def error_handler(func: Callable) -> Callable:
         except Exception as e:
             logging.error(f"Error in {func.__name__}: {str(e)}")
             st.error("An unexpected error occurred. Please check your inputs and try again.")
-            # For a secure lab, we do not print stack traces to the frontend UI
     return wrapper
 
 def render_coming_soon(section_name: str) -> None:
