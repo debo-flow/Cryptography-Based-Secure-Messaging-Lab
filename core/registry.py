@@ -16,9 +16,9 @@ class AlgorithmMetadata:
 
 ALGORITHM_REGISTRY: Dict[str, AlgorithmMetadata] = {
     # Symmetric Encryption
-    "AES-128": AlgorithmMetadata("AES-128", "Symmetric", "Advanced Encryption Standard (128-bit)", "Planned", "M03"),
-    "AES-192": AlgorithmMetadata("AES-192", "Symmetric", "Advanced Encryption Standard (192-bit)", "Planned", "M03"),
-    "AES-256": AlgorithmMetadata("AES-256", "Symmetric", "Advanced Encryption Standard (256-bit)", "Planned", "M03"),
+    "AES-128": AlgorithmMetadata("AES-128", "Symmetric", "Advanced Encryption Standard (128-bit)", "Implemented", "M03"),
+    "AES-192": AlgorithmMetadata("AES-192", "Symmetric", "Advanced Encryption Standard (192-bit)", "Implemented", "M03"),
+    "AES-256": AlgorithmMetadata("AES-256", "Symmetric", "Advanced Encryption Standard (256-bit)", "Implemented", "M03"),
     "AES-GCM": AlgorithmMetadata("AES-GCM", "Symmetric Auth", "AES with Galois/Counter Mode", "Planned", "M04"),
     "ChaCha20": AlgorithmMetadata("ChaCha20", "Symmetric Stream", "ChaCha20 Stream Cipher", "Planned", "M07"),
     "ChaCha20-Poly1305": AlgorithmMetadata("ChaCha20-Poly1305", "Symmetric Auth", "ChaCha20 with Poly1305 MAC", "Planned", "M08"),
