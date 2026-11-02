@@ -32,10 +32,12 @@ ALGORITHM_REGISTRY: Dict[str, AlgorithmMetadata] = {
     
     "Hybrid-RSA-AES": AlgorithmMetadata("Hybrid-RSA-AES", "Hybrid AEAD", "RSA-OAEP KEM + AES-GCM DEM", "Implemented", "M10"),
     
-    "X25519": AlgorithmMetadata("X25519", "Key Exchange", "Elliptic-curve Diffie-Hellman", "Planned", "M12"),
+    "ECC-SECP256R1": AlgorithmMetadata("ECC-SECP256R1", "Asymmetric", "Elliptic Curve Cryptography", "Implemented", "M11"),
+    "X25519": AlgorithmMetadata("X25519", "Key Exchange", "Elliptic-curve Diffie-Hellman", "Implemented", "M11"),
+    "Ed25519": AlgorithmMetadata("Ed25519", "Digital Signature", "Edwards-curve Digital Signature Algorithm", "Implemented", "M11"),
+    
     "PBKDF2": AlgorithmMetadata("PBKDF2", "KDF", "Password-Based Key Derivation Function 2", "Planned", "M14"),
     "Scrypt": AlgorithmMetadata("Scrypt", "KDF", "Scrypt Key Derivation Function", "Planned", "M14"),
     "Argon2id": AlgorithmMetadata("Argon2id", "KDF", "Argon2id Memory-Hard KDF", "Planned", "M14"),
-    "RSA-PSS": AlgorithmMetadata("RSA-PSS", "Digital Signature", "RSA Probabilistic Signature Scheme", "Planned", "M16"),
-    "Ed25519": AlgorithmMetadata("Ed25519", "Digital Signature", "Edwards-curve Digital Signature Algorithm", "Planned", "M16")
+    "RSA-PSS": AlgorithmMetadata("RSA-PSS", "Digital Signature", "RSA Probabilistic Signature Scheme", "Planned", "M16")
 }
