@@ -29,7 +29,10 @@ ALGORITHM_REGISTRY: Dict[str, AlgorithmMetadata] = {
     
     # Asymmetric Cryptography
     "RSA": AlgorithmMetadata("RSA", "Asymmetric", "Rivest-Shamir-Adleman Algorithm", "Implemented", "M05"),
-    "RSA-OAEP": AlgorithmMetadata("RSA-OAEP", "Asymmetric Enc", "RSA with Optimal Asymmetric Encryption Padding", "Implemented", "M05"),
+    "RSA-OAEP-SHA256": AlgorithmMetadata("RSA-OAEP-SHA256", "Asymmetric Enc", "RSA OAEP with SHA-256", "Implemented", "M06"),
+    "RSA-OAEP-SHA384": AlgorithmMetadata("RSA-OAEP-SHA384", "Asymmetric Enc", "RSA OAEP with SHA-384", "Implemented", "M06"),
+    "RSA-OAEP-SHA512": AlgorithmMetadata("RSA-OAEP-SHA512", "Asymmetric Enc", "RSA OAEP with SHA-512", "Implemented", "M06"),
+    
     "X25519": AlgorithmMetadata("X25519", "Key Exchange", "Elliptic-curve Diffie-Hellman", "Planned", "M12"),
     
     # Password-Based Cryptography
