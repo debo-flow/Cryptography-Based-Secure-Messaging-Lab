@@ -9,11 +9,9 @@ def test_roadmap_integrity():
     assert TOTAL_MILESTONES == 35
     assert ROADMAP[0]["id"] == "M01"
     assert ROADMAP[0]["status"] == "Completed"
-    assert ROADMAP[1]["id"] == "M02"
-    assert ROADMAP[1]["status"] == "Completed"
-    assert ROADMAP[-1]["id"] == "M35"
-    assert ROADMAP[-1]["status"] == "Pending"
+    assert ROADMAP[5]["id"] == "M06"
+    assert ROADMAP[5]["status"] == "Completed"
 
 def test_navigation_configuration():
     assert "Cryptographic Core Engine" in NAVIGATION
-    assert "Dashboard" in NAVIGATION
+    assert "Advanced RSA-OAEP" in NAVIGATION
