@@ -34,3 +34,7 @@ class AlgorithmNotAvailableError(CryptographicError):
 class CryptographicOperationError(CryptographicError):
     """Raised when a cryptographic primitive fails internally."""
     pass
+
+class AuthenticationError(CryptographicError):
+    """Raised when MAC/Signature validation fails. Indicates tampering or wrong key."""
+    pass
