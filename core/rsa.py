@@ -1,7 +1,6 @@
 """
-Advanced RSA-OAEP Asymmetric Cryptography Engine.
-Implements Key Generation, Serialization, Parameter Management, and Strict Length Validation.
-Updated for Version 2 schema supporting SHA-256, SHA-384, SHA-512, and labels.
+Advanced RSA Engine.
+Implements Key Generation, Serialization, RSA-OAEP Encryption/Decryption, and RSA-PSS Digital Signatures.
 """
 import json
 import hashlib
@@ -10,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import serialization
+from cryptography.exceptions import InvalidSignature
 
 from .exceptions import CryptographicOperationError, KeySerializationError, InvalidInputError, AuthenticationError
 from .encoding import text_to_bytes, bytes_to_text, bytes_to_b64, b64_to_bytes
@@ -68,112 +68,85 @@ def generate_public_key_fingerprint(public_key: rsa.RSAPublicKey) -> str:
     return ":".join(digest[i:i+2] for i in range(0, len(digest), 2)).upper()
 
 def get_max_encryption_size(key_size_bits: int, digest_name: str = "SHA256") -> int:
-    """Calculates max plaintext size for RSA-OAEP: k - 2 * hLen - 2"""
     hLen = _get_hash_algo(digest_name).digest_size
     return (key_size_bits // 8) - (2 * hLen) - 2
 
+# === ENCRYPTION ===
 def encrypt_rsa_oaep(public_key: rsa.RSAPublicKey, plaintext: str, digest_name: str = "SHA256", label_str: str = "") -> Dict[str, Any]:
-    """
-    Encrypts data using RSA-OAEP with specific digest and optional label. Output format v2.
-    """
     try:
         key_size = public_key.key_size
-        if key_size not in RSA_SUPPORTED_SIZES:
-            raise InvalidInputError(f"Unsupported key size: {key_size}")
-            
+        if key_size not in RSA_SUPPORTED_SIZES: raise InvalidInputError(f"Unsupported key size: {key_size}")
         pt_bytes = text_to_bytes(plaintext)
         label_bytes = text_to_bytes(label_str) if label_str else None
-        
         max_size = get_max_encryption_size(key_size, digest_name)
-        if len(pt_bytes) > max_size:
-            raise InvalidInputError(f"Plaintext too long. Max allowed for RSA-{key_size} OAEP-{digest_name} is {max_size} bytes.")
-            
+        if len(pt_bytes) > max_size: raise InvalidInputError(f"Plaintext too long.")
         hash_algo = _get_hash_algo(digest_name)
-        
-        ciphertext = public_key.encrypt(
-            pt_bytes,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hash_algo),
-                algorithm=hash_algo,
-                label=label_bytes
-            )
-        )
-        
+        ciphertext = public_key.encrypt(pt_bytes, padding.OAEP(mgf=padding.MGF1(algorithm=hash_algo), algorithm=hash_algo, label=label_bytes))
         return {
-            "version": 2,
-            "algorithm": "RSA-OAEP",
-            "key_size": key_size,
-            "oaep_digest": digest_name,
-            "mgf": "MGF1",
-            "mgf_digest": digest_name,
-            "label": bytes_to_b64(label_bytes) if label_bytes else None,
-            "encoding": "base64",
-            "ciphertext": bytes_to_b64(ciphertext)
+            "version": 2, "algorithm": "RSA-OAEP", "key_size": key_size, "oaep_digest": digest_name, "mgf": "MGF1",
+            "mgf_digest": digest_name, "label": bytes_to_b64(label_bytes) if label_bytes else None,
+            "encoding": "base64", "ciphertext": bytes_to_b64(ciphertext)
         }
-    except InvalidInputError:
-        raise
-    except Exception as e:
-        raise CryptographicOperationError(f"RSA Encryption failed: {str(e)}")
+    except InvalidInputError: raise
+    except Exception as e: raise CryptographicOperationError(f"RSA Encryption failed: {str(e)}")
 
 def decrypt_rsa_oaep(private_key: rsa.RSAPrivateKey, payload_json: str, provided_label: str = "") -> str:
-    """
-    Decrypts an RSA-OAEP JSON payload strictly matching Version 2 parameters.
-    The provided_label must mathematically match the one used during encryption.
-    """
     try:
         payload = json.loads(payload_json)
-        
-        if payload.get("version") != 2:
-            raise InvalidInputError("Unsupported payload version. Expected version 2.")
-            
-        algo = payload.get("algorithm")
-        ct_b64 = payload.get("ciphertext")
-        key_size_req = payload.get("key_size")
-        oaep_digest = payload.get("oaep_digest")
-        mgf = payload.get("mgf")
-        json_label_b64 = payload.get("label")
-        
-        if not all([algo, ct_b64, key_size_req, oaep_digest, mgf]):
-            raise InvalidInputError("Malformed RSA payload. Missing required fields.")
-            
-        if algo != "RSA-OAEP":
-            raise InvalidInputError(f"Unsupported RSA encryption algorithm: {algo}")
-            
-        if private_key.key_size != key_size_req:
-            raise InvalidInputError(f"Key size mismatch. Payload requires RSA-{key_size_req}.")
-
+        if payload.get("version") != 2: raise InvalidInputError("Unsupported payload version. Expected version 2.")
+        algo, ct_b64, key_size_req, oaep_digest, mgf, json_label_b64 = payload.get("algorithm"), payload.get("ciphertext"), payload.get("key_size"), payload.get("oaep_digest"), payload.get("mgf"), payload.get("label")
+        if not all([algo, ct_b64, key_size_req, oaep_digest, mgf]): raise InvalidInputError("Malformed RSA payload.")
+        if algo != "RSA-OAEP": raise InvalidInputError(f"Unsupported RSA algorithm: {algo}")
+        if private_key.key_size != key_size_req: raise InvalidInputError(f"Key size mismatch.")
         ciphertext = b64_to_bytes(ct_b64)
-        
-        # Ciphertext size MUST strictly match the RSA modulus size in bytes
-        if len(ciphertext) != private_key.key_size // 8:
-            raise InvalidInputError(f"Ciphertext length ({len(ciphertext)}) does not match modulus length ({private_key.key_size // 8}).")
-
+        if len(ciphertext) != private_key.key_size // 8: raise InvalidInputError(f"Ciphertext length mismatch.")
         hash_algo = _get_hash_algo(oaep_digest)
-        
-        # Label verification
         json_label_bytes = b64_to_bytes(json_label_b64) if json_label_b64 else None
         prov_label_bytes = text_to_bytes(provided_label) if provided_label else None
-        
-        if prov_label_bytes and json_label_bytes and prov_label_bytes != json_label_bytes:
-            raise AuthenticationError("Provided label does not match the metadata label in the payload.")
-            
+        if prov_label_bytes and json_label_bytes and prov_label_bytes != json_label_bytes: raise AuthenticationError("Label mismatch.")
         effective_label = prov_label_bytes if prov_label_bytes is not None else json_label_bytes
-
-        plaintext_bytes = private_key.decrypt(
-            ciphertext,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hash_algo),
-                algorithm=hash_algo,
-                label=effective_label
-            )
-        )
+        plaintext_bytes = private_key.decrypt(ciphertext, padding.OAEP(mgf=padding.MGF1(algorithm=hash_algo), algorithm=hash_algo, label=effective_label))
         return bytes_to_text(plaintext_bytes)
-        
-    except ValueError:
-        raise CryptographicOperationError("Decryption failed. Incorrect private key, corrupted ciphertext, or incorrect OAEP label/digest.")
-    except AuthenticationError:
-        raise
-    except json.JSONDecodeError:
-        raise InvalidInputError("Payload is not valid JSON.")
+    except ValueError: raise CryptographicOperationError("Decryption failed. Incorrect private key or corrupted ciphertext.")
+    except AuthenticationError: raise
+    except json.JSONDecodeError: raise InvalidInputError("Payload is not valid JSON.")
+    except Exception as e: raise CryptographicOperationError(f"RSA Decryption failed: {str(e)}")
+
+# === DIGITAL SIGNATURES ===
+def sign_rsa_pss(private_key: rsa.RSAPrivateKey, message: str, hash_name: str = "SHA256") -> str:
+    """Signs a message using RSA-PSS and returns Base64 encoded signature."""
+    try:
+        hash_algo = _get_hash_algo(hash_name)
+        msg_bytes = text_to_bytes(message)
+        signature = private_key.sign(
+            msg_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hash_algo),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hash_algo
+        )
+        return bytes_to_b64(signature)
     except Exception as e:
-        raise CryptographicOperationError(f"RSA Decryption validation failed: {str(e)}")
+        raise CryptographicOperationError(f"RSA-PSS Signing failed: {str(e)}")
+
+def verify_rsa_pss(public_key: rsa.RSAPublicKey, signature_b64: str, message: str, hash_name: str = "SHA256") -> bool:
+    """Verifies an RSA-PSS signature. Raises AuthenticationError on failure."""
+    try:
+        hash_algo = _get_hash_algo(hash_name)
+        msg_bytes = text_to_bytes(message)
+        sig_bytes = b64_to_bytes(signature_b64)
+        public_key.verify(
+            sig_bytes,
+            msg_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hash_algo),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hash_algo
+        )
+        return True
+    except InvalidSignature:
+        raise AuthenticationError("Digital Signature Verification Failed: The message was altered or signed by a different key.")
+    except Exception as e:
+        raise CryptographicOperationError(f"RSA-PSS Verification process failed: {str(e)}")
