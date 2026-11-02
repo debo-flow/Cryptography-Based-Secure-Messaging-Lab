@@ -23,7 +23,7 @@ ALGORITHM_REGISTRY: Dict[str, AlgorithmMetadata] = {
     "AES-192-GCM": AlgorithmMetadata("AES-192-GCM", "AEAD", "AES Galois/Counter Mode (192-bit)", "Implemented", "M04"),
     "AES-256-GCM": AlgorithmMetadata("AES-256-GCM", "AEAD", "AES Galois/Counter Mode (256-bit)", "Implemented", "M04"),
     
-    "ChaCha20": AlgorithmMetadata("ChaCha20", "Symmetric Stream", "ChaCha20 Stream Cipher", "Planned", "M07"),
+    "ChaCha20": AlgorithmMetadata("ChaCha20", "Symmetric Stream", "ChaCha20 Stream Cipher", "Implemented", "M07"),
     "ChaCha20-Poly1305": AlgorithmMetadata("ChaCha20-Poly1305", "AEAD", "ChaCha20 with Poly1305 MAC", "Planned", "M08"),
     "Fernet": AlgorithmMetadata("Fernet", "Symmetric Auth", "Symmetric Authenticated Cryptography (Fernet)", "Planned", "M09"),
     
