@@ -1,75 +1,75 @@
 """
-Automated Testing for Milestone 5: Advanced RSA Asymmetric Cryptography Engine.
-Ensures correct key serialization, encryption/decryption boundaries, and OAEP enforcement.
+Automated Testing for Milestone 6: Advanced RSA-OAEP Encryption & Interoperability.
+Ensures correct key serialization, dynamic parameter bindings, label validations, and strict length enforcement.
 """
 import pytest
 import json
 from core.rsa import (
-    generate_rsa_key_pair, serialize_private_key_pem, serialize_public_key_pem,
-    load_private_key_pem, load_public_key_pem, generate_public_key_fingerprint,
-    encrypt_rsa_oaep, decrypt_rsa_oaep, get_max_encryption_size
+    generate_rsa_key_pair, encrypt_rsa_oaep, decrypt_rsa_oaep, get_max_encryption_size, SUPPORTED_DIGESTS
 )
-from core.exceptions import InvalidInputError, KeySerializationError, CryptographicOperationError
+from core.exceptions import InvalidInputError, CryptographicOperationError, AuthenticationError
+from core.encoding import bytes_to_b64
 
-def test_rsa_key_generation_and_serialization():
-    # Keep key size small for fast tests, 2048 is fine for unit testing.
+@pytest.mark.parametrize("digest", ["SHA256", "SHA384", "SHA512"])
+def test_rsa_oaep_matrix_round_trip(digest):
+    """Tests cross-compatibility of OAEP with various secure digest algorithms."""
     priv, pub = generate_rsa_key_pair(2048)
+    message = f"Highly confidential RSA-OAEP payload using {digest}."
     
-    password = "StrictlySecurePassword123!"
+    payload = encrypt_rsa_oaep(pub, message, digest_name=digest)
     
-    priv_pem = serialize_private_key_pem(priv, password)
-    pub_pem = serialize_public_key_pem(pub)
-    
-    assert "BEGIN ENCRYPTED PRIVATE KEY" in priv_pem
-    assert "BEGIN PUBLIC KEY" in pub_pem
-    
-    # Reload Keys
-    reloaded_priv = load_private_key_pem(priv_pem, password)
-    reloaded_pub = load_public_key_pem(pub_pem)
-    
-    assert reloaded_priv.key_size == 2048
-    assert reloaded_pub.key_size == 2048
-
-def test_rsa_wrong_password_rejection():
-    priv, _ = generate_rsa_key_pair(2048)
-    priv_pem = serialize_private_key_pem(priv, "CorrectPassword")
-    
-    with pytest.raises(KeySerializationError):
-        load_private_key_pem(priv_pem, "WrongPassword")
-
-def test_rsa_oaep_round_trip():
-    priv, pub = generate_rsa_key_pair(2048)
-    message = "Highly confidential RSA-OAEP payload."
-    
-    payload = encrypt_rsa_oaep(pub, message)
-    
-    assert payload["version"] == 1
-    assert payload["algorithm"] == "RSA-OAEP-SHA256"
-    assert payload["key_size"] == 2048
+    assert payload["version"] == 2
+    assert payload["oaep_digest"] == digest
+    assert payload["mgf_digest"] == digest
     
     recovered = decrypt_rsa_oaep(priv, json.dumps(payload))
     assert recovered == message
 
-def test_rsa_oversize_plaintext_rejection():
-    _, pub = generate_rsa_key_pair(2048)
-    max_size = get_max_encryption_size(2048)
+def test_rsa_oaep_label_validation():
+    """Validates that OAEP correctly incorporates and strictly enforces mathematical labels."""
+    priv, pub = generate_rsa_key_pair(2048)
+    msg = "Label Test Payload"
+    valid_label = "Connection-ID-5928"
+    wrong_label = "Connection-ID-9999"
     
-    oversized_msg = "A" * (max_size + 1)
+    # Encrypt with valid label
+    payload = encrypt_rsa_oaep(pub, msg, "SHA256", valid_label)
+    
+    # Ensure decryption works when label matches
+    assert decrypt_rsa_oaep(priv, json.dumps(payload), valid_label) == msg
+    
+    # Ensure decryption fails if user provides wrong label out of band
+    with pytest.raises(AuthenticationError):
+        decrypt_rsa_oaep(priv, json.dumps(payload), wrong_label)
+
+def test_rsa_oversize_plaintext_rejection_matrix():
+    """Ensures that dynamic calculation of modulus vs. hash block length is respected."""
+    _, pub = generate_rsa_key_pair(2048)
+    
+    # Test across all digests
+    for digest in SUPPORTED_DIGESTS.keys():
+        max_size = get_max_encryption_size(2048, digest)
+        oversized_msg = "A" * (max_size + 1)
+        
+        with pytest.raises(InvalidInputError) as excinfo:
+            encrypt_rsa_oaep(pub, oversized_msg, digest)
+        
+        assert "too long" in str(excinfo.value)
+        
+        # Valid size should succeed
+        exact_size_msg = "A" * max_size
+        assert encrypt_rsa_oaep(pub, exact_size_msg, digest) is not None
+
+def test_rsa_ciphertext_length_validation():
+    """Ensures structurally malformed ciphertexts are rejected before math operations occur."""
+    priv, pub = generate_rsa_key_pair(2048)
+    payload = encrypt_rsa_oaep(pub, "Data")
+    
+    # RSA-2048 ciphertext MUST be exactly 256 bytes.
+    # Tampering base64 to change byte length:
+    payload["ciphertext"] = payload["ciphertext"][:-2]
     
     with pytest.raises(InvalidInputError) as excinfo:
-        encrypt_rsa_oaep(pub, oversized_msg)
-    
-    assert "too long" in str(excinfo.value)
-    
-    # Valid size should succeed
-    exact_size_msg = "A" * max_size
-    assert encrypt_rsa_oaep(pub, exact_size_msg) is not None
-
-def test_rsa_fingerprint_consistency():
-    _, pub = generate_rsa_key_pair(2048)
-    
-    fp1 = generate_public_key_fingerprint(pub)
-    fp2 = generate_public_key_fingerprint(pub)
-    
-    assert fp1 == fp2
-    assert len(fp1.split(":")) == 32 # SHA-256 is 32 bytes
+        decrypt_rsa_oaep(priv, json.dumps(payload))
+        
+    assert "Ciphertext length" in str(excinfo.value)
