@@ -8,16 +8,16 @@ from typing import Dict, List, Any
 # Project Header & Metadata
 PROJECT_INFO = {
     "name": "Cryptography-Based Secure Messaging Laboratory",
-    "version": "1.0.0-M01",
+    "version": "1.1.0-M02",
     "description": "A professional, extensible, research-oriented Cryptography & Secure Messaging Laboratory.",
-    "status": "Development - Milestone 1",
+    "status": "Development - Milestone 2 Completed",
     "identity": "Cybersecurity Research Lab"
 }
 
 # 35-Milestone Development Plan
 ROADMAP: List[Dict[str, Any]] = [
     {"id": "M01", "title": "Project Foundation & Core Architecture", "status": "Completed"},
-    {"id": "M02", "title": "Cryptographic Core Engine", "status": "Pending"},
+    {"id": "M02", "title": "Cryptographic Core Engine", "status": "Completed"},
     {"id": "M03", "title": "AES Encryption", "status": "Pending"},
     {"id": "M04", "title": "AES-256-GCM", "status": "Pending"},
     {"id": "M05", "title": "RSA Encryption", "status": "Pending"},
@@ -57,6 +57,7 @@ ROADMAP: List[Dict[str, Any]] = [
 NAVIGATION = [
     "Dashboard",
     "Encryption Laboratory",
+    "Cryptographic Core Engine",  # NEW IN M02
     "AES Encryption",
     "RSA Encryption",
     "ChaCha20 Encryption",
