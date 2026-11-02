@@ -30,3 +30,7 @@ env/
 # Streamlit / Pytest
 .streamlit/credentials.toml
 .pytest_cache/
+
+# Databases
+*.db
+*.sqlite3
