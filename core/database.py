@@ -3,7 +3,7 @@ SQLite Infrastructure for Metadata Storage.
 Strictly stores metadata and identifiers, NEVER plaintext secrets.
 """
 import sqlite3
-from typing import Optional
+from typing import Optional, Dict, Any
 from .metadata import KeyMetadata, KeyStatus
 
 class MetadataDatabase:
@@ -18,24 +18,10 @@ class MetadataDatabase:
 
     def _initialize_schema(self) -> None:
         schema_queries = [
-            """
-            CREATE TABLE IF NOT EXISTS key_metadata (
-                key_id TEXT PRIMARY KEY,
-                algorithm TEXT NOT NULL,
-                purpose TEXT NOT NULL,
-                status TEXT NOT NULL,
-                version INTEGER NOT NULL,
-                created_at REAL NOT NULL
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS nonce_metadata (
-                nonce_id TEXT PRIMARY KEY,
-                algorithm TEXT NOT NULL,
-                associated_key_id TEXT NOT NULL,
-                created_at REAL NOT NULL
-            );
-            """
+            "CREATE TABLE IF NOT EXISTS key_metadata (key_id TEXT PRIMARY KEY, algorithm TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, created_at REAL NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS nonce_metadata (nonce_id TEXT PRIMARY KEY, algorithm TEXT NOT NULL, associated_key_id TEXT NOT NULL, created_at REAL NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS signature_metadata (operation_id TEXT PRIMARY KEY, algorithm TEXT NOT NULL, fingerprint TEXT NOT NULL, signature_timestamp TEXT NOT NULL, operation_type TEXT NOT NULL, status TEXT NOT NULL, format_version TEXT NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS hmac_metadata (operation_id TEXT PRIMARY KEY, algorithm TEXT NOT NULL, key_identifier TEXT NOT NULL, timestamp TEXT NOT NULL, operation_type TEXT NOT NULL, status TEXT NOT NULL, format_version TEXT NOT NULL);"
         ]
         with self._get_connection() as conn:
             for query in schema_queries:
@@ -55,12 +41,22 @@ class MetadataDatabase:
             cursor = conn.execute("SELECT * FROM key_metadata WHERE key_id = ?", (key_id,))
             row = cursor.fetchone()
             if row:
-                return KeyMetadata(
-                    key_id=row["key_id"],
-                    algorithm=row["algorithm"],
-                    purpose=row["purpose"],
-                    status=KeyStatus(row["status"]),
-                    version=row["version"],
-                    created_at=row["created_at"]
-                )
+                return KeyMetadata(key_id=row["key_id"], algorithm=row["algorithm"], purpose=row["purpose"], status=KeyStatus(row["status"]), version=row["version"], created_at=row["created_at"])
         return None
+
+    def insert_signature_metadata(self, operation_id: str, algorithm: str, fingerprint: str, timestamp: str, op_type: str, status: str, version: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO signature_metadata (operation_id, algorithm, fingerprint, signature_timestamp, operation_type, status, format_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (operation_id, algorithm, fingerprint, timestamp, op_type, status, version)
+            )
+            conn.commit()
+
+    def insert_hmac_metadata(self, operation_id: str, algorithm: str, key_identifier: str, timestamp: str, op_type: str, status: str, version: str) -> None:
+        """Stores unclassified public metadata about HMAC operations for auditing (M17)."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO hmac_metadata (operation_id, algorithm, key_identifier, timestamp, operation_type, status, format_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (operation_id, algorithm, key_identifier, timestamp, op_type, status, version)
+            )
+            conn.commit()
