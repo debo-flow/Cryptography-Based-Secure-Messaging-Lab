@@ -1,0 +1,44 @@
+name: Cryptographic Security & Validation CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run Cryptographic Test Vector Validation (KAT)
+      run: |
+        pytest tests/test_kat.py -v
+        
+    - name: Run Property-Based Fuzz Testing (Hypothesis)
+      run: |
+        pytest tests/test_properties.py -v
+        
+    - name: Run Full Integration & Regression Suite with Coverage
+      run: |
+        pytest --cov=core --cov-report=xml --cov-report=term tests/ -v
+        
+    - name: Upload Coverage Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report-${{ matrix.python-version }}
+        path: coverage.xml
