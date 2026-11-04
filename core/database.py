@@ -1,7 +1,8 @@
 """
-SQLite Infrastructure for Metadata Storage (Final M30 Release).
+SQLite Infrastructure for Metadata Storage (Final V1.0.0 Release - M35).
 Strictly stores metadata, identifiers, and audit logs.
-NEVER stores plaintext passwords, raw private keys, or unencrypted session secrets.
+NEVER stores plaintext passwords, raw private keys, unencrypted session secrets,
+chain keys, or message keys. Consolidates all tables from M1 to M35.
 """
 import sqlite3
 import time
@@ -35,21 +36,47 @@ class MetadataDatabase:
             "CREATE TABLE IF NOT EXISTS trusted_identities (identity_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, algorithm TEXT NOT NULL, trusted_at REAL NOT NULL);",
             "CREATE TABLE IF NOT EXISTS qr_metadata (payload_id TEXT PRIMARY KEY, identity_id TEXT NOT NULL, algorithm TEXT NOT NULL, fingerprint TEXT NOT NULL, timestamp REAL NOT NULL);",
             
-            # M24 - M26: Integrity & Benchmarking
+            # M24 - M27: Integrity, Benchmarking & Legacy Audits
             "CREATE TABLE IF NOT EXISTS integrity_reports (report_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, target_type TEXT NOT NULL, overall_status TEXT NOT NULL, timestamp REAL NOT NULL, report_json TEXT NOT NULL);",
             "CREATE TABLE IF NOT EXISTS benchmark_history (session_id TEXT PRIMARY KEY, timestamp REAL NOT NULL, environment_json TEXT NOT NULL, report_json TEXT NOT NULL);",
             "CREATE TABLE IF NOT EXISTS adv_benchmark_history (session_id TEXT PRIMARY KEY, timestamp REAL NOT NULL, algorithm TEXT NOT NULL, operation TEXT NOT NULL, metrics_json TEXT NOT NULL);",
-            
-            # M27: Security Auditing
             "CREATE TABLE IF NOT EXISTS security_audits (audit_id TEXT PRIMARY KEY, timestamp REAL NOT NULL, findings_count INTEGER NOT NULL);",
-            "CREATE TABLE IF NOT EXISTS security_findings (finding_id TEXT PRIMARY KEY, audit_id TEXT NOT NULL, title TEXT NOT NULL, module TEXT NOT NULL, severity TEXT NOT NULL, description TEXT NOT NULL, evidence TEXT NOT NULL, remediation TEXT NOT NULL, status TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS security_findings (finding_id TEXT PRIMARY KEY, audit_id TEXT NOT NULL, title TEXT NOT NULL, module TEXT NOT NULL, severity TEXT NOT NULL, description TEXT NOT NULL, evidence TEXT NOT NULL, remediation TEXT NOT NULL, status TEXT NOT NULL);",
+            
+            # M31: Advanced E2EE Architecture V2.0
+            "CREATE TABLE IF NOT EXISTS e2ee_v2_sessions (session_id TEXT PRIMARY KEY, initiator TEXT NOT NULL, responder TEXT NOT NULL, protocol_version TEXT NOT NULL, cipher_suite TEXT NOT NULL, created_at REAL NOT NULL, expires_at REAL NOT NULL, status TEXT NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS e2ee_v2_messages (message_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, sender_id TEXT NOT NULL, recipient_id TEXT NOT NULL, direction TEXT NOT NULL, seq_num INTEGER NOT NULL, status TEXT NOT NULL, timestamp REAL NOT NULL, envelope_json TEXT NOT NULL);",
+            
+            # M32: Ratchet & Forward Secrecy Engine
+            "CREATE TABLE IF NOT EXISTS ratchet_metadata (session_id TEXT PRIMARY KEY, ratchet_generation INTEGER NOT NULL, tx_seq INTEGER NOT NULL, rx_seq INTEGER NOT NULL, status TEXT NOT NULL, last_update REAL NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS ratchet_security_findings (finding_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, severity TEXT NOT NULL, description TEXT NOT NULL, evidence TEXT NOT NULL, impact TEXT NOT NULL, remediation TEXT NOT NULL, timestamp REAL NOT NULL);",
+            
+            # M33: Key Lifecycle Management
+            "CREATE TABLE IF NOT EXISTS lifecycle_versions (key_id TEXT PRIMARY KEY, parent_key_id TEXT, version_number INTEGER NOT NULL, rotation_timestamp REAL NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS lifecycle_usage_audit (audit_id TEXT PRIMARY KEY, key_id TEXT NOT NULL, operation_type TEXT NOT NULL, timestamp REAL NOT NULL, status TEXT NOT NULL, category TEXT NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS lifecycle_backups (backup_id TEXT PRIMARY KEY, key_id TEXT NOT NULL, timestamp REAL NOT NULL, version TEXT NOT NULL, encrypted_payload TEXT NOT NULL);",
+            
+            # M34: Advanced Security Audit Center & Compliance
+            "CREATE TABLE IF NOT EXISTS m34_audit_executions (audit_id TEXT PRIMARY KEY, timestamp REAL NOT NULL, profile TEXT NOT NULL, status TEXT NOT NULL, metadata_json TEXT NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS m34_security_findings (finding_id TEXT PRIMARY KEY, audit_id TEXT NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL, module TEXT NOT NULL, severity TEXT NOT NULL, description TEXT NOT NULL, evidence TEXT NOT NULL, impact TEXT NOT NULL, remediation TEXT NOT NULL, status TEXT NOT NULL, timestamp REAL NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS m34_remediation_tracking (remediation_id TEXT PRIMARY KEY, finding_id TEXT NOT NULL, status TEXT NOT NULL, notes TEXT NOT NULL, timestamp REAL NOT NULL);"
         ]
         with self._get_connection() as conn:
             for query in schema_queries:
                 conn.execute(query)
             conn.commit()
 
-    # --- Messaging & File Metadata (M16 - M21) ---
+    # =====================================================================
+    # M34 HELPER: Raw Query Execution (For Security Auditor & Compliance)
+    # =====================================================================
+    def execute_raw_query(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """M34 Helper: Read-only query execution for auditing purposes."""
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute(query, params).fetchall()]
+
+    # =====================================================================
+    # M16-M21: Legacy Messaging & File Metadata
+    # =====================================================================
     def insert_signature_metadata(self, operation_id: str, algorithm: str, fingerprint: str, timestamp: str, op_type: str, status: str, version: str) -> None:
         with self._get_connection() as conn:
             conn.execute("INSERT INTO signature_metadata VALUES (?, ?, ?, ?, ?, ?, ?)", (operation_id, algorithm, fingerprint, timestamp, op_type, status, version))
@@ -80,7 +107,9 @@ class MetadataDatabase:
             conn.execute("INSERT INTO file_metadata VALUES (?, ?, ?, ?, ?, ?, ?)", (record_id, original_filename, file_size, algorithm, enc_type, format_version, timestamp))
             conn.commit()
 
-    # --- KMS Engine (M22) ---
+    # =====================================================================
+    # M22 & M23: Key Management System (KMS) & Identities
+    # =====================================================================
     def insert_kms_key(self, meta: Dict[str, Any]) -> None:
         with self._get_connection() as conn:
             conn.execute(
@@ -126,7 +155,6 @@ class MetadataDatabase:
             cursor = conn.execute("SELECT * FROM kms_audit ORDER BY timestamp DESC LIMIT ?", (limit,))
             return [dict(row) for row in cursor.fetchall()]
 
-    # --- Identity Trust & QR (M23) ---
     def insert_trusted_identity(self, identity_id: str, fingerprint: str, algorithm: str) -> None:
         with self._get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO trusted_identities VALUES (?, ?, ?, ?)", (identity_id, fingerprint, algorithm, time.time()))
@@ -153,7 +181,9 @@ class MetadataDatabase:
             conn.execute("INSERT INTO qr_metadata VALUES (?, ?, ?, ?, ?)", (payload_id, identity_id, algorithm, fingerprint, time.time()))
             conn.commit()
 
-    # --- Integrity & Benchmarks (M24 - M26) ---
+    # =====================================================================
+    # M24-M27: Integrity, Benchmarks & Legacy Audits
+    # =====================================================================
     def insert_integrity_report(self, report_id: str, target_id: str, target_type: str, status: str, report_json: str) -> None:
         with self._get_connection() as conn:
             conn.execute("INSERT INTO integrity_reports VALUES (?, ?, ?, ?, ?, ?)", (report_id, target_id, target_type, status, time.time(), report_json))
@@ -179,7 +209,6 @@ class MetadataDatabase:
             cursor = conn.execute("SELECT * FROM adv_benchmark_history ORDER BY timestamp DESC LIMIT ?", (limit,))
             return [dict(row) for row in cursor.fetchall()]
 
-    # --- Security Audits (M27) ---
     def insert_security_audit(self, audit_id: str, findings_count: int, findings: List[Dict[str, Any]]) -> None:
         with self._get_connection() as conn:
             conn.execute("INSERT INTO security_audits VALUES (?, ?, ?)", (audit_id, time.time(), findings_count))
@@ -194,8 +223,137 @@ class MetadataDatabase:
         with self._get_connection() as conn:
             cursor = conn.execute("SELECT * FROM security_findings ORDER BY severity ASC")
             return [dict(row) for row in cursor.fetchall()]
-            
+
     def update_finding_status(self, finding_id: str, new_status: str) -> None:
         with self._get_connection() as conn:
             conn.execute("UPDATE security_findings SET status = ? WHERE finding_id = ?", (new_status, finding_id))
             conn.commit()
+
+    # =====================================================================
+    # M31: Advanced E2EE Architecture V2.0
+    # =====================================================================
+    def insert_e2ee_v2_session(self, s_id: str, init_id: str, resp_id: str, ver: str, cipher: str, created: float, expires: float, status: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO e2ee_v2_sessions (session_id, initiator, responder, protocol_version, cipher_suite, created_at, expires_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (s_id, init_id, resp_id, ver, cipher, created, expires, status)
+            )
+            conn.commit()
+
+    def update_e2ee_v2_session_status(self, session_id: str, new_status: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute("UPDATE e2ee_v2_sessions SET status = ? WHERE session_id = ?", (new_status, session_id))
+            conn.commit()
+
+    def insert_e2ee_v2_message(self, msg_id: str, s_id: str, sender: str, recipient: str, direction: str, seq: int, status: str, ts: float, env_json: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO e2ee_v2_messages (message_id, session_id, sender_id, recipient_id, direction, seq_num, status, timestamp, envelope_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (msg_id, s_id, sender, recipient, direction, seq, status, ts, env_json)
+            )
+            conn.commit()
+            
+    def get_e2ee_v2_messages_by_session(self, session_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM e2ee_v2_messages WHERE session_id = ? ORDER BY seq_num ASC", (session_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    # =====================================================================
+    # M32: Ratchet Engine & Forward Secrecy
+    # =====================================================================
+    def insert_ratchet_metadata(self, session_id: str, generation: int, tx_seq: int, rx_seq: int, status: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO ratchet_metadata (session_id, ratchet_generation, tx_seq, rx_seq, status, last_update) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, generation, tx_seq, rx_seq, status, time.time())
+            )
+            conn.commit()
+            
+    def get_ratchet_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM ratchet_metadata WHERE session_id = ?", (session_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def insert_ratchet_finding(self, finding_id: str, session_id: str, severity: str, description: str, evidence: str, impact: str, remediation: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO ratchet_security_findings (finding_id, session_id, severity, description, evidence, impact, remediation, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (finding_id, session_id, severity, description, evidence, impact, remediation, time.time())
+            )
+            conn.commit()
+            
+    def get_all_ratchet_findings(self) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM ratchet_security_findings ORDER BY timestamp DESC").fetchall()]
+
+    # =====================================================================
+    # M33: Key Lifecycle Management
+    # =====================================================================
+    def insert_lifecycle_version(self, key_id: str, parent_key_id: Optional[str], version_number: int) -> None:
+        with self._get_connection() as conn:
+            conn.execute("INSERT INTO lifecycle_versions (key_id, parent_key_id, version_number, rotation_timestamp) VALUES (?, ?, ?, ?)",
+                         (key_id, parent_key_id, version_number, time.time()))
+            conn.commit()
+
+    def get_lifecycle_versions(self, key_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM lifecycle_versions WHERE key_id = ? OR parent_key_id = ? ORDER BY version_number DESC", (key_id, key_id)).fetchall()]
+
+    def insert_lifecycle_audit(self, audit_id: str, key_id: str, operation_type: str, status: str, category: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute("INSERT INTO lifecycle_usage_audit (audit_id, key_id, operation_type, timestamp, status, category) VALUES (?, ?, ?, ?, ?, ?)",
+                         (audit_id, key_id, operation_type, time.time(), status, category))
+            conn.commit()
+
+    def get_lifecycle_audit_log(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM lifecycle_usage_audit ORDER BY timestamp DESC LIMIT ?", (limit,)).fetchall()]
+
+    def insert_lifecycle_backup(self, backup_id: str, key_id: str, version: str, payload: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute("INSERT INTO lifecycle_backups (backup_id, key_id, timestamp, version, encrypted_payload) VALUES (?, ?, ?, ?, ?)",
+                         (backup_id, key_id, time.time(), version, payload))
+            conn.commit()
+
+    def get_lifecycle_backups(self) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM lifecycle_backups ORDER BY timestamp DESC").fetchall()]
+
+    def get_e2ee_sessions_by_identity(self, identity: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM e2ee_v2_sessions WHERE initiator = ? OR responder = ?", (identity, identity)).fetchall()]
+
+    # =====================================================================
+    # M34: Advanced Security Audit Center
+    # =====================================================================
+    def insert_m34_audit_execution(self, audit_id: str, profile: str, status: str, metadata_json: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute("INSERT INTO m34_audit_executions (audit_id, timestamp, profile, status, metadata_json) VALUES (?, ?, ?, ?, ?)",
+                         (audit_id, time.time(), profile, status, metadata_json))
+            conn.commit()
+
+    def insert_m34_security_finding(self, f: Dict[str, Any]) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO m34_security_findings (finding_id, audit_id, title, category, module, severity, description, evidence, impact, remediation, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (f["finding_id"], f["audit_id"], f["title"], f["category"], f["module"], f["severity"], f["description"], f["evidence"], f["impact"], f["remediation"], f["status"], time.time())
+            )
+            conn.commit()
+
+    def get_m34_security_findings(self, status_filter: str = None) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            if status_filter:
+                return [dict(row) for row in conn.execute("SELECT * FROM m34_security_findings WHERE status = ? ORDER BY timestamp DESC", (status_filter,)).fetchall()]
+            return [dict(row) for row in conn.execute("SELECT * FROM m34_security_findings ORDER BY timestamp DESC").fetchall()]
+            
+    def update_m34_finding_status(self, finding_id: str, new_status: str, notes: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute("UPDATE m34_security_findings SET status = ? WHERE finding_id = ?", (new_status, finding_id))
+            conn.execute("INSERT INTO m34_remediation_tracking (remediation_id, finding_id, status, notes, timestamp) VALUES (?, ?, ?, ?, ?)",
+                         (f"REM-{time.time()}", finding_id, new_status, notes, time.time()))
+            conn.commit()
+
+    def get_m34_remediation_history(self, finding_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM m34_remediation_tracking WHERE finding_id = ? ORDER BY timestamp ASC", (finding_id,)).fetchall()]
