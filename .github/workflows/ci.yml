@@ -1,44 +1,52 @@
-name: Cryptographic Security & Validation CI
+name: V1.0.0 CI Pipeline & Security Audit
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "release/*" ]
   pull_request:
     branches: [ "main" ]
 
 jobs:
-  test:
+  test-and-audit:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        
+        cache: 'pip'
+
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
-    - name: Run Cryptographic Test Vector Validation (KAT)
+
+    - name: Code Quality & Linting (Ruff)
       run: |
-        pytest tests/test_kat.py -v
-        
-    - name: Run Property-Based Fuzz Testing (Hypothesis)
+        ruff check core/ tests/ app.py
+
+    - name: Static Security Analysis (Bandit)
       run: |
-        pytest tests/test_properties.py -v
-        
-    - name: Run Full Integration & Regression Suite with Coverage
+        # Ignore asserts in tests, focus on core cryptographic implementations
+        bandit -r core/ app.py -ll
+
+    - name: Supply Chain Dependency Audit (pip-audit)
       run: |
-        pytest --cov=core --cov-report=xml --cov-report=term tests/ -v
-        
-    - name: Upload Coverage Artifacts
-      uses: actions/upload-artifact@v3
+        pip-audit -r requirements.txt
+
+    - name: Execute Full Pytest Suite & Coverage
+      run: |
+        pytest tests/ -v --cov=core --cov-report=xml --cov-fail-under=85
+
+    - name: Upload Coverage Report
+      uses: codecov/codecov-action@v4
       with:
-        name: coverage-report-${{ matrix.python-version }}
-        path: coverage.xml
+        file: ./coverage.xml
+        fail_ci_if_error: false
