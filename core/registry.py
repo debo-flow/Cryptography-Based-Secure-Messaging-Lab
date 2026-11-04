@@ -1,6 +1,6 @@
 """
-Cryptographic Algorithm Registry (Final M30 Release).
-Tracks supported cryptographic primitives, algorithms, and application modules.
+Cryptographic Algorithm Registry (Final v1.0.0 Release).
+Tracks supported cryptographic primitives, algorithms, and application modules from M01 to M35.
 """
 from dataclasses import dataclass
 from typing import Dict
@@ -37,7 +37,11 @@ ALGORITHM_REGISTRY: Dict[str, AlgorithmMetadata] = {
     "Integrity-Analyzer": AlgorithmMetadata("Integrity", "Security Analysis", "Message Integrity & Security Analyzer", "Implemented", "M24"),
     "Comparison-Engine": AlgorithmMetadata("Compare", "Analysis", "Algorithm Comparison Engine", "Implemented", "M25"),
     "Advanced-Benchmark": AlgorithmMetadata("Benchmark", "Analysis", "Statistically Rigorous Profiling Engine", "Implemented", "M26"),
-    "Security-Auditor": AlgorithmMetadata("Audit", "Analysis", "Defensive Security Posture Dashboard", "Implemented", "M27"),
     "Validation-Framework": AlgorithmMetadata("Testing", "Assurance", "Property-Based CI/CD Test Runner", "Implemented", "M28"),
-    "System-Integration": AlgorithmMetadata("Integration", "Architecture", "M30 Production Release Consolidation", "Implemented", "M30")
+    "System-Integration": AlgorithmMetadata("Integration", "Architecture", "M30 Production Release Consolidation", "Implemented", "M30"),
+    "Adv-E2EE-Protocol": AlgorithmMetadata("Adv-E2EE", "Protocol", "Modular Authenticated E2EE Architecture", "Implemented", "M31"),
+    "Ratchet-Engine": AlgorithmMetadata("Ratchet", "Protocol", "Forward Secrecy & Cryptographic Ratchet", "Implemented", "M32"),
+    "Key-Lifecycle-Engine": AlgorithmMetadata("Lifecycle", "Key Management", "Key Rotation, Backup & Audit Lifecycle", "Implemented", "M33"),
+    "Adv-Security-Auditor": AlgorithmMetadata("Auditor", "Assurance", "Centralized Security Audit & Compliance", "Implemented", "M34"),
+    "Final-Release-Engine": AlgorithmMetadata("Release", "System", "Final Integration & V1.0.0 Release Architecture", "Implemented", "M35")
 }
